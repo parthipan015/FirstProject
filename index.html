@@ -1,0 +1,383 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snake Game</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #101820;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+
+    .game {
+      width: min(92vw, 440px);
+      text-align: center;
+      padding: 20px;
+      background: #1b2838;
+      border-radius: 18px;
+      box-shadow: 0 10px 35px #0006;
+    }
+
+    h1 {
+      color: #65f58a;
+      margin-top: 0;
+      letter-spacing: 3px;
+    }
+
+    .score-board {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 15px;
+      font-size: 16px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #0b141b;
+      border: 2px solid #385064;
+      border-radius: 8px;
+    }
+
+    button {
+      padding: 12px 22px;
+      margin: 12px 5px 0;
+      border: none;
+      border-radius: 8px;
+      background: #65f58a;
+      color: #102018;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #3cdb69;
+    }
+
+    .instructions {
+      color: #bdc9d5;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .mobile-controls {
+      display: grid;
+      grid-template-columns: repeat(3, 55px);
+      justify-content: center;
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .mobile-controls button {
+      margin: 0;
+      padding: 12px;
+      font-size: 18px;
+    }
+
+    .empty {
+      visibility: hidden;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="game">
+    <h1>🐍 SNAKE GAME</h1>
+
+    <div class="score-board">
+      <span>Score: <strong id="score">0</strong></span>
+      <span>Best: <strong id="best">0</strong></span>
+    </div>
+
+    <canvas id="board" width="400" height="400"></canvas>
+
+    <div>
+      <button id="startBtn">Start Game</button>
+      <button id="restartBtn">Restart</button>
+    </div>
+
+    <div class="mobile-controls">
+      <button class="empty" tabindex="-1"> </button>
+      <button data-dir="up" aria-label="Up">⬆️</button>
+      <button class="empty" tabindex="-1"> </button>
+      <button data-dir="left" aria-label="Left">⬅️</button>
+      <button data-dir="down" aria-label="Down">⬇️</button>
+      <button data-dir="right" aria-label="Right">➡️</button>
+    </div>
+
+    <p class="instructions">
+      Use arrow keys or WASD to move.<br>
+      Eat the red food and avoid hitting walls or yourself!
+    </p>
+    <p id="message" aria-live="polite">Press Start Game to play!</p>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("board");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const message = document.getElementById("message");
+    const startBtn = document.getElementById("startBtn");
+
+    const cell = 20;
+    const cells = canvas.width / cell;
+
+    let snake, food, dx, dy, nextDx, nextDy;
+    let score = 0;
+    let best = 0;
+    let timer = null;
+    let running = false;
+    let gameOver = false;
+
+    try {
+      best = Number(localStorage.getItem("snakeBest")) || 0;
+    } catch (e) {
+      best = 0;
+    }
+    bestEl.textContent = best;
+
+    function reset() {
+      clearInterval(timer);
+      running = false;
+      gameOver = false;
+      score = 0;
+
+      snake = [
+        { x: 10, y: 10 },
+        { x: 9, y: 10 },
+        { x: 8, y: 10 }
+      ];
+
+      dx = 1;
+      dy = 0;
+      nextDx = 1;
+      nextDy = 0;
+
+      scoreEl.textContent = score;
+      startBtn.textContent = "Start Game";
+      message.textContent = "Press Start Game to play!";
+
+      placeFood();
+      draw();
+    }
+
+    function placeFood() {
+      do {
+        food = {
+          x: Math.floor(Math.random() * cells),
+          y: Math.floor(Math.random() * cells)
+        };
+      } while (
+        snake.some(part => part.x === food.x && part.y === food.y)
+      );
+    }
+
+    function startGame() {
+      if (running) return;
+
+      if (gameOver) {
+        reset();
+      }
+
+      running = true;
+      startBtn.textContent = "Playing...";
+      message.textContent = "Good luck!";
+      timer = setInterval(update, 110);
+    }
+
+    function endGame() {
+      clearInterval(timer);
+      running = false;
+      gameOver = true;
+      startBtn.textContent = "Play Again";
+      message.textContent = "Game Over! Your score: " + score;
+    }
+
+    function update() {
+      dx = nextDx;
+      dy = nextDy;
+
+      const head = {
+        x: snake[0].x + dx,
+        y: snake[0].y + dy
+      };
+
+      const eating = head.x === food.x && head.y === food.y;
+
+      // Wall collision
+      if (
+        head.x < 0 || head.x >= cells ||
+        head.y < 0 || head.y >= cells
+      ) {
+        endGame();
+        return;
+      }
+
+      // Self collision. The tail moves away unless food is eaten.
+      const bodyToCheck = eating ? snake : snake.slice(0, -1);
+
+      if (
+        bodyToCheck.some(part =>
+          part.x === head.x && part.y === head.y
+        )
+      ) {
+        endGame();
+        return;
+      }
+
+      snake.unshift(head);
+
+      if (eating) {
+        score += 10;
+        scoreEl.textContent = score;
+
+        if (score > best) {
+          best = score;
+          bestEl.textContent = best;
+          try {
+            localStorage.setItem("snakeBest", best);
+          } catch (e) {
+            // Game still works if storage is unavailable.
+          }
+        }
+
+        placeFood();
+      } else {
+        snake.pop();
+      }
+
+      draw();
+    }
+
+    function draw() {
+      ctx.fillStyle = "#0b141b";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Grid
+      ctx.strokeStyle = "#172833";
+      ctx.lineWidth = 1;
+
+      for (let i = 0; i <= cells; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * cell, 0);
+        ctx.lineTo(i * cell, canvas.height);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, i * cell);
+        ctx.lineTo(canvas.width, i * cell);
+        ctx.stroke();
+      }
+
+      // Food
+      ctx.fillStyle = "#ff5364";
+      ctx.beginPath();
+      ctx.arc(
+        food.x * cell + cell / 2,
+        food.y * cell + cell / 2,
+        cell / 2 - 3,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+
+      // Snake
+      snake.forEach((part, index) => {
+        ctx.fillStyle = index === 0 ? "#a0ffb4" : "#42df70";
+        ctx.fillRect(
+          part.x * cell + 1,
+          part.y * cell + 1,
+          cell - 2,
+          cell - 2
+        );
+
+        if (index === 0) {
+          // Eyes
+          ctx.fillStyle = "#102018";
+          const eyeX = dx === 1 ? 14 : dx === -1 ? 5 : 6;
+          const eyeY = dy === 1 ? 14 : dy === -1 ? 5 : 6;
+
+          if (dx !== 0) {
+            ctx.fillRect(part.x * cell + eyeX,
+                         part.y * cell + 5, 3, 3);
+            ctx.fillRect(part.x * cell + eyeX,
+                         part.y * cell + 12, 3, 3);
+          } else {
+            ctx.fillRect(part.x * cell + 5,
+                         part.y * cell + eyeY, 3, 3);
+            ctx.fillRect(part.x * cell + 12,
+                         part.y * cell + eyeY, 3, 3);
+          }
+        }
+      });
+    }
+
+    function changeDirection(direction) {
+      const directions = {
+        up:    { x: 0, y: -1 },
+        down:  { x: 0, y: 1 },
+        left:  { x: -1, y: 0 },
+        right: { x: 1, y: 0 }
+      };
+
+      const next = directions[direction];
+      if (!next) return;
+
+      // Prevent reversing directly into yourself
+      if (next.x === -dx && next.y === -dy) return;
+
+      nextDx = next.x;
+      nextDy = next.y;
+    }
+
+    document.addEventListener("keydown", event => {
+      const keys = {
+        ArrowUp: "up",
+        w: "up", W: "up",
+        ArrowDown: "down",
+        s: "down", S: "down",
+        ArrowLeft: "left",
+        a: "left", A: "left",
+        ArrowRight: "right",
+        d: "right", D: "right"
+      };
+
+      if (keys[event.key]) {
+        event.preventDefault();
+        changeDirection(keys[event.key]);
+      }
+
+      if (event.code === "Space" && !running) {
+        event.preventDefault();
+        startGame();
+      }
+    });
+
+    document.querySelectorAll("[data-dir]").forEach(button => {
+      button.addEventListener("click", () => {
+        changeDirection(button.dataset.dir);
+      });
+    });
+
+    startBtn.addEventListener("click", startGame);
+    document.getElementById("restartBtn").addEventListener("click", reset);
+
+    reset();
+  </script>
+</body>
+</html>
